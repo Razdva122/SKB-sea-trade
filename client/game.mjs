@@ -332,7 +332,7 @@ class Ship {
         const isValidExp = curExp.items.every((item) => {
             const findedGood = this.homeGoods.find((good) => item.name === good.name);
             return findedGood && findedGood.amount >= item.amount;
-        }) && ((curExp.distance) < this.maxTurn - this.turn);
+        }) && ((curExp.road.length + curExp.items.length * 2) < this.maxTurn - this.turn);
         return isValidExp;
     }
 
