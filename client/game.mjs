@@ -1,13 +1,3 @@
-
-
-/* Result log: 
-v1: 6 тестов - 116689
-v2: Попробую не брать предметы, которые стоят в сумме меньше 10: 117867
-v3: Попробую не брать предметы, которые стоят в сумме меньше 25: 117845
-v4: Попробую не брать предметы, которые стоят в сумме меньше 50: 118389 +++
-v5: Попробую не брать предметы, которые стоят в сумме меньше 100: 118389
-*/
-
 let ship;
 
 const minAmountOfItemsSum = 50;
@@ -21,9 +11,12 @@ export function startGame(levelMap, gameState) {
 }
 
 export function getNextCommand(gameState) {
-    //console.log(JSON.stringify(gameState.goodsInPort,null,2));
     ship.homeGoods = gameState.goodsInPort;
     ship.currentPos = [gameState.ship.y, gameState.ship.x];
+    ship.score = gameState.score;
+    if (ship.logger && ship.turn === 178) {
+        console.log(ship.score);
+    }
     if (gameState.pirates.length) {
         ship.pirates = true;
         ship.map = JSON.parse(JSON.stringify(ship.initMap));
@@ -61,6 +54,8 @@ class Ship {
         this.turn = 0;
         // Массив Действий
         this.actions = [];
+        // Логгирование для статиситики
+        this.logger = true;
         // Команды
         this.commands = {
             'N': () => 'N',
@@ -319,6 +314,16 @@ class Ship {
             items: this.expeditions[this.currentExpedition].items,
             road: this.expeditions[this.currentExpedition].road,
             backRoad: this.expeditions[this.currentExpedition].backRoad,
+        }
+        if (this.logger) {
+            const expForLogs = this.expeditions[this.currentExpedition];
+            console.log('\n');
+            console.log('Turns: ', this.turn,'-',expForLogs.distance + this.turn, `(${expForLogs.distance})`);
+            console.log('PortId: ', expForLogs.portId);
+            console.log('Items: ', expForLogs.items.map(i => `${i.name}: ${i.amount}`).join(', '));
+            console.log('Price: ', expForLogs.price);
+            console.log('Profit: ', expForLogs.profit);
+            console.log('Score: ', this.score + expForLogs.price);
         }
         this.currentExpedition += 1;
         return bestExpedition;
