@@ -114,49 +114,49 @@ class Ship {
                 return goodsAvailable[b].profit - goodsAvailable[a].profit
             })
             const port = this.ports.find((port) => port.portId === portPrices.portId);
-            const expedition = {
-                portId: portPrices.portId,
-                items: [],
-                total: 0,
-                price: 0,
-                destination: port.coords,
-                road: port.road,
-                backRoad: port.backRoad,
-                profit: 0,
-            };
-            expedition.distance = expedition.road.length * 2;
-            for (let i = 0; i < itemsForBuy.length; i += 1) {
-                if (expedition.total === this.maxCap) {
-                    break;
+            const possibleExpeditions = [];
+            for (let j = 0; j < itemsForBuy.length; j += 1) {
+                // Вариант в котором мы меняем главный продукт для покупки
+                let newItemsForBuy = [...itemsForBuy];
+                newItemsForBuy = [newItemsForBuy.splice(j, 1)[0], ...newItemsForBuy];
+                const expedition = {
+                    portId: portPrices.portId,
+                    items: [],
+                    total: 0,
+                    price: 0,
+                    destination: port.coords,
+                    road: port.road,
+                    backRoad: port.backRoad,
+                    profit: 0,
+                };
+                expedition.distance = expedition.road.length * 2;
+                for (let i = 0; i < newItemsForBuy.length; i += 1) {
+                    if (expedition.total === this.maxCap) {
+                        break;
+                    }
+                    const itemNumber = newItemsForBuy[i];
+                    const leftSpace = this.maxCap - expedition.total;
+                    let amountOfItems = Math.floor(leftSpace / goodsAvailable[itemNumber].volume);
+                    if (amountOfItems === 0) {
+                        continue;
+                    }
+                    if (amountOfItems >= goodsAvailable[itemNumber].amount) {
+                        amountOfItems = goodsAvailable[itemNumber].amount;
+                    }
+                    const possibleProfit = (expedition.price + (amountOfItems * goodsAvailable[itemNumber].price)) / (expedition.distance + 2);
+                    if (expedition.profit > possibleProfit) {
+                        continue;
+                    }
+                    expedition.items.push({ name: goodsAvailable[itemNumber].name, amount: amountOfItems });
+                    expedition.profit = possibleProfit;
+                    expedition.distance += 2;
+                    expedition.total += amountOfItems * goodsAvailable[itemNumber].volume;
+                    expedition.price += amountOfItems * goodsAvailable[itemNumber].price;
                 }
-                const itemNumber = itemsForBuy[i];
-                const leftSpace = this.maxCap - expedition.total;
-                if (goodsAvailable[itemNumber].volume > this.maxCap) {
-                    itemsForBuy.splice(i, 1);
-                    i -= 1;
-                    continue;
-                }
-                let amountOfItems = Math.floor(leftSpace / goodsAvailable[itemNumber].volume);
-                if (amountOfItems === 0) {
-                    continue;
-                }
-                if (amountOfItems >= goodsAvailable[itemNumber].amount) {
-                    amountOfItems = goodsAvailable[itemNumber].amount;
-                    itemsForBuy.splice(i, 1);
-                    i -= 1;
-                }
-                const possibleProfit = (expedition.price + (amountOfItems * goodsAvailable[itemNumber].price)) / (expedition.distance + 2);
-                if (expedition.profit > possibleProfit) {
-                    continue;
-                }
-                expedition.items.push({ name: goodsAvailable[itemNumber].name, amount: amountOfItems });
-                expedition.profit = possibleProfit;
-                expedition.distance += 2;
-                expedition.total += amountOfItems * goodsAvailable[itemNumber].volume;
-                expedition.price += amountOfItems * goodsAvailable[itemNumber].price;
-                goodsAvailable[itemNumber].amount -= amountOfItems;
+                possibleExpeditions.push(expedition);
             }
-            this.expeditions.push(expedition);
+            possibleExpeditions.sort((a, b) => b.profit - a.profit);
+            this.expeditions.push(possibleExpeditions[0]);
         })
     }
 
