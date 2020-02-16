@@ -113,7 +113,7 @@ class Ship {
             }
             const itemsForBuy = Object.keys(goodsAvailable);
             itemsForBuy.sort((a, b) => {
-                return b.profit - a.profit
+                return goodsAvailable[b].profit - goodsAvailable[a].profit
             })
             while (itemsForBuy.length) {
                 const port = this.ports.find((port) => port.portId === portPrices.portId);
