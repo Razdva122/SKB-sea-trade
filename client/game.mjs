@@ -46,14 +46,14 @@ class Ship {
         this.maxCap = 368;
         // Максимальное количество ходов
         this.maxTurn = 180;
-        // Номер текущей экспедиции
-        this.currentExpedition = 0;
         // Номер текущего хода
         this.turn = 0;
         // Массив Действий
         this.actions = [];
         // Логгирование для статиситики
         this.logger = true;
+        // Экспедиции
+        this.expeditions = [];
         // Команды
         this.commands = {
             'N': () => 'N',
@@ -92,13 +92,11 @@ class Ship {
         this.generatePathsMap();
         // Координаты для портов и путь из порта в домашний порт
         this.createExtraInfoForPorts();
-        // Создать все экспедиции
-        this.constructAllExpeditions();
         // Отсортировать экспедиции
         this.sortExpeditions();
     }
 
-    constructAllExpeditions() {
+    constructExpeditionsForEveryPort() {
         this.expeditions = [];
         this.prices.forEach((portPrices) => {
             const goodsAvailable = JSON.parse(JSON.stringify(this.homeGoods));
@@ -113,55 +111,52 @@ class Ship {
             }
             const itemsForBuy = Object.keys(goodsAvailable);
             itemsForBuy.sort((a, b) => {
-                return b.profit - a.profit
+                return goodsAvailable[b].profit - goodsAvailable[a].profit
             })
-            while (itemsForBuy.length) {
-                const port = this.ports.find((port) => port.portId === portPrices.portId);
-                const expedition = {
-                    portId: portPrices.portId,
-                    items: [],
-                    total: 0,
-                    price: 0,
-                    destination: port.coords,
-                    road: port.road,
-                    backRoad: port.backRoad,
-                    profit: 0,
-                };
-
-                expedition.distance = expedition.road.length * 2;
-                for (let i = 0; i < itemsForBuy.length; i += 1) {
-                    if (expedition.total === this.maxCap) {
-                        break;
-                    }
-                    const itemNumber = itemsForBuy[i];
-                    const leftSpace = this.maxCap - expedition.total;
-                    if (goodsAvailable[itemNumber].volume > this.maxCap) {
-                        itemsForBuy.splice(i, 1);
-                        i -= 1;
-                        continue;
-                    }
-                    let amountOfItems = Math.floor(leftSpace / goodsAvailable[itemNumber].volume);
-                    if (amountOfItems === 0) {
-                        continue;
-                    }
-                    if (amountOfItems >= goodsAvailable[itemNumber].amount) {
-                        amountOfItems = goodsAvailable[itemNumber].amount;
-                        itemsForBuy.splice(i, 1);
-                        i -= 1;
-                    }
-                    const possibleProfit = (expedition.price + (amountOfItems * goodsAvailable[itemNumber].price)) / (expedition.distance + 2);
-                    if (expedition.profit > possibleProfit) {
-                        continue;
-                    }
-                    expedition.items.push({ name: goodsAvailable[itemNumber].name, amount: amountOfItems });
-                    expedition.profit = possibleProfit;
-                    expedition.distance += 2;
-                    expedition.total += amountOfItems * goodsAvailable[itemNumber].volume;
-                    expedition.price += amountOfItems * goodsAvailable[itemNumber].price;
-                    goodsAvailable[itemNumber].amount -= amountOfItems;
+            const port = this.ports.find((port) => port.portId === portPrices.portId);
+            const expedition = {
+                portId: portPrices.portId,
+                items: [],
+                total: 0,
+                price: 0,
+                destination: port.coords,
+                road: port.road,
+                backRoad: port.backRoad,
+                profit: 0,
+            };
+            expedition.distance = expedition.road.length * 2;
+            for (let i = 0; i < itemsForBuy.length; i += 1) {
+                if (expedition.total === this.maxCap) {
+                    break;
                 }
-                this.expeditions.push(expedition);
+                const itemNumber = itemsForBuy[i];
+                const leftSpace = this.maxCap - expedition.total;
+                if (goodsAvailable[itemNumber].volume > this.maxCap) {
+                    itemsForBuy.splice(i, 1);
+                    i -= 1;
+                    continue;
+                }
+                let amountOfItems = Math.floor(leftSpace / goodsAvailable[itemNumber].volume);
+                if (amountOfItems === 0) {
+                    continue;
+                }
+                if (amountOfItems >= goodsAvailable[itemNumber].amount) {
+                    amountOfItems = goodsAvailable[itemNumber].amount;
+                    itemsForBuy.splice(i, 1);
+                    i -= 1;
+                }
+                const possibleProfit = (expedition.price + (amountOfItems * goodsAvailable[itemNumber].price)) / (expedition.distance + 2);
+                if (expedition.profit > possibleProfit) {
+                    continue;
+                }
+                expedition.items.push({ name: goodsAvailable[itemNumber].name, amount: amountOfItems });
+                expedition.profit = possibleProfit;
+                expedition.distance += 2;
+                expedition.total += amountOfItems * goodsAvailable[itemNumber].volume;
+                expedition.price += amountOfItems * goodsAvailable[itemNumber].price;
+                goodsAvailable[itemNumber].amount -= amountOfItems;
             }
+            this.expeditions.push(expedition);
         })
     }
 
@@ -284,6 +279,7 @@ class Ship {
 
     // Создать задачи на экспедицию
     makeExpedition() {
+        this.constructExpeditionsForEveryPort();
         const bestExpedition = this.findBestExpedition();
         // Если экспедиции закончились
         if (!bestExpedition) {
@@ -298,19 +294,14 @@ class Ship {
 
     // Ищем лучшую валидную экспедицию
     findBestExpedition() {
-        while (!this.isValidExpedition()) {
-            this.currentExpedition += 1;
-            if (this.currentExpedition >= this.expeditions.length) {
-                return null;
-            }
-        }
+        this.sortExpeditions();
         const bestExpedition = {
-            items: this.expeditions[this.currentExpedition].items,
-            road: this.expeditions[this.currentExpedition].road,
-            backRoad: this.expeditions[this.currentExpedition].backRoad,
+            items: this.expeditions[0].items,
+            road: this.expeditions[0].road,
+            backRoad: this.expeditions[0].backRoad,
         }
         if (this.logger) {
-            const expForLogs = this.expeditions[this.currentExpedition];
+            const expForLogs = this.expeditions[0];
             console.log('\n');
             console.log('Turns: ', this.turn,'-',expForLogs.distance + this.turn, `(${expForLogs.distance})`);
             console.log('PortId: ', expForLogs.portId);
@@ -319,21 +310,7 @@ class Ship {
             console.log('Profit: ', expForLogs.profit);
             console.log('Score: ', this.score + expForLogs.price);
         }
-        this.currentExpedition += 1;
         return bestExpedition;
-    }
-
-    // Проверяем достаточно ли товаров и времени для экспедиции
-    isValidExpedition() {
-        const curExp = this.expeditions[this.currentExpedition];
-        if (this.currentExpedition >= this.expeditions.length) {
-            return null;
-        }
-        const isValidExp = curExp.items.every((item) => {
-            const findedGood = this.homeGoods.find((good) => item.name === good.name);
-            return findedGood && findedGood.amount >= item.amount;
-        }) && ((curExp.road.length + curExp.items.length * 2) < this.maxTurn - this.turn);
-        return isValidExp;
     }
 
     // Загружаем товары
