@@ -295,13 +295,17 @@ class Ship {
     // Ищем лучшую валидную экспедицию
     findBestExpedition() {
         this.sortExpeditions();
-        const bestExpedition = {
-            items: this.expeditions[0].items,
-            road: this.expeditions[0].road,
-            backRoad: this.expeditions[0].backRoad,
+        let numOfExpedition = 0;
+        let expedition = this.expeditions[numOfExpedition];
+        while(expedition.road.length + expedition.items.length * 2 > this.maxTurn - this.turn) {
+            numOfExpedition += 1;
+            if (numOfExpedition >= this.expeditions.length) {
+                return null
+            }
+            expedition = this.expeditions[numOfExpedition];
         }
         if (this.logger) {
-            const expForLogs = this.expeditions[0];
+            const expForLogs = expedition;
             console.log('\n');
             console.log('Turns: ', this.turn,'-',expForLogs.distance + this.turn, `(${expForLogs.distance})`);
             console.log('PortId: ', expForLogs.portId);
@@ -310,7 +314,7 @@ class Ship {
             console.log('Profit: ', expForLogs.profit);
             console.log('Score: ', this.score + expForLogs.price);
         }
-        return bestExpedition;
+        return expedition;
     }
 
     // Загружаем товары
