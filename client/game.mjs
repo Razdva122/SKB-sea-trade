@@ -2,20 +2,21 @@ let ship;
 
 export function startGame(levelMap, gameState) {
     const home = gameState.ports.find((port) => port.isHome);
+
     ship = new Ship([gameState.ship.y, gameState.ship.x], [home.y, home.x], 
         gameState.ports.filter((port) => !port.isHome), gameState.prices,
         gameState.goodsInPort, levelMap);
-    //console.log(gameState.prices);
-    //console.log(ship);
 }
 
 export function getNextCommand(gameState) {
     ship.homeGoods = gameState.goodsInPort;
     ship.currentPos = [gameState.ship.y, gameState.ship.x];
     ship.score = gameState.score;
-    if (/*ship.logger &&*/ ship.turn === 178) {
+
+    if (ship.logger && ship.turn === 178) {
         console.log(ship.score);
     }
+
     if (gameState.pirates.length) {
         ship.pirates = true;
         ship.map = JSON.parse(JSON.stringify(ship.initMap));
@@ -26,11 +27,8 @@ export function getNextCommand(gameState) {
         // Корабль(Ship)
         ship.map[gameState.ship.y][gameState.ship.x] = 'S';
     }
-    //console.log(ship.map.map(i => i.join('')).join('\n'));
-    const a = ship.doAction();
-    // console.log(ship.score);
-    // console.log(a);
-    return a;
+
+    return ship.doAction();
 }
 
 
@@ -41,6 +39,7 @@ class Ship {
         this.homeGoods = homeGoods;
         this.ports = ports;
         this.prices = prices;
+
         this.generateMap(levelMap);
         this.initConfig();
         this.initActions();
@@ -59,6 +58,7 @@ class Ship {
         this.logger = false;
         // Экспедиции
         this.expeditions = [];
+
         // Команды
         this.commands = {
             'N': () => 'N',
@@ -77,18 +77,21 @@ class Ship {
             '1,0': 'S',
             '-1,0': 'N',
         },
+        // Инвертированная карта
         this.reversedMapMoves = {
             'E': [0, 1],
             'W': [0, -1],
             'S': [1, 0],
             'N': [-1, 0],
         }
+        // Движение в противоположную сторону
         this.reversedDirection = {
             'W': 'E',
             'E': 'W',
             'N': 'S',
             'S': 'N',
         }
+        // Все возможные направления движения
         this.arrayOfMoves = [[0, 1], [0, -1], [1, 0], [-1, 0]];
     }
 
@@ -97,6 +100,7 @@ class Ship {
         this.generatePathsMap();
         // Координаты для портов и путь из порта в домашний порт
         this.createExtraInfoForPorts();
+        // Ближайшая дорога до порта
         this.minRoadToPort = this.ports.reduce((acc, port) => {
             return Math.min(acc, port.road.length)
         }, 1000);
@@ -106,7 +110,9 @@ class Ship {
         this.sortExpeditions();
     }
 
+    // Создание двух лучших экспедиций
     createTwoBestExpeditions() {
+        // Варианты экспедиций
         const variants = [];
         this.ports.forEach((firstPort) => {
             this.ports.forEach((secondPort) => {
@@ -116,18 +122,30 @@ class Ship {
                     total: 0,
                     id: variants.length,
                 };
+
                 this.homeGoods.forEach((good) => {
                     variant.items[good.name] = {
                         amount: good.amount,
                         volume: good.volume,
                     }
-                })
+                });
+
                 variant.ports = [JSON.parse(JSON.stringify(firstPort)), JSON.parse(JSON.stringify(secondPort))];
                 variant.ports.forEach((port) => {
                     port.itemsForTravel = [];
                     port.leftSpaces = ship.maxCap;
                 });
                 variant.ports.sort((a, b) => a.road.length - b.road.length);
+
+                // Пропускаем варианты дубликаты
+                if (variants.some(variantForSearch => {
+                    return variantForSearch.ports.every((port, index) => {
+                        return port.portId === variant.ports[index].portId;
+                    })
+                })) {
+                    return;
+                }
+
                 // 2 дороги + дорога во второе место + 2 пачки предметов
                 Object.defineProperty(variant, 'stepsLeft', {
                     get: function() {
@@ -136,6 +154,8 @@ class Ship {
                                 ship.turn);
                     }
                 });
+
+                // Для каждой экспедиции добавляем список товаров которые можно купить в ней 
                 variant.ports.forEach((port, index) => {
                     for (const nameOfGood in port.prices) {
                         if (variant.items[nameOfGood]) {
@@ -167,45 +187,47 @@ class Ship {
                         }
                     }
                 });
+                
+                // Пока 2(Купить - продать предмет) или больше шагов добавляем предметы
                 while (variant.stepsLeft > 1) {
+                    // Убираем предметы которые уже нельзя купить
                     variant.prices = variant.prices.filter((singlePrice) => singlePrice.maxAmountOfItems > 0);
+                    // Если предметы закончились выходим из цикла
                     if (variant.prices.length === 0) {
                         break;
                     }
-                    if (variant.stepsLeft > 4) {
+
+                    let item;
+                    if (variant.stepsLeft > 5) {
                         // Берем самые профитные предметы по соотношению на еденицу места
                         variant.prices.sort((a, b) => {
                             return b.pricePerSpace - a.pricePerSpace;
                         });
                         if (variant.prices[0].maxAmountOfItems) {
-                            const item = variant.prices[0];
+                            item = variant.prices[0];
                             variant.ports[item.portIndex].itemsForTravel.push({
                                 name: item.name,
                                 amount: item.maxAmountOfItems,
                             });
-                            variant.total += item.moneyProfit;
-                            variant.ports[item.portIndex].leftSpaces -= item.maxAmountOfItems * item.volume;
-                            variant.items[item.name].amount -= item.maxAmountOfItems;
                         }
                     } else {
                         // Берем предметы, которые принесут максимальное количество денег
                         variant.prices.sort((a, b) => {
                             return b.moneyProfit - a.moneyProfit;
                         });
-                        const item = variant.prices[0];
+                        item = variant.prices[0];
                         variant.ports[item.portIndex].itemsForTravel.push({
                             name: item.name,
                             amount: item.maxAmountOfItems,
                         });
-                        variant.total += item.moneyProfit;
-                        variant.ports[item.portIndex].leftSpaces -= item.maxAmountOfItems * item.volume;
-                        variant.items[item.name].amount -= item.maxAmountOfItems;
                     }
+                    variant.total += item.moneyProfit;
+                    variant.ports[item.portIndex].leftSpaces -= item.maxAmountOfItems * item.volume;
+                    variant.items[item.name].amount -= item.maxAmountOfItems;
                 }
                 variants.push(variant);
             })
         });
-        console.log(variants);
         const bestVariant = variants.reduce((acc, curVal) => {
             if (curVal.total > acc.total) {
                 acc = curVal;
@@ -216,7 +238,7 @@ class Ship {
             }
             return acc;
         }, variants[0]);
-        console.log(bestVariant);
+
         this.loadItems(bestVariant.ports[0].itemsForTravel);
         this.move(bestVariant.ports[0].road);
         this.sellItems(bestVariant.ports[0].itemsForTravel);
@@ -224,13 +246,16 @@ class Ship {
         this.loadItems(bestVariant.ports[1].itemsForTravel);
         this.move(bestVariant.ports[1].road);
         this.sellItems(bestVariant.ports[1].itemsForTravel);
+
         for (let i = 0; i < 10; i += 1) {
+            // Просто ждем если остались свободные ходы
             this.actions.push(this.commands['WAIT']());
         }
     }
 
     constructExpeditionsForEveryPort() {
         this.expeditions = [];
+
         this.prices.forEach((portPrices) => {
             const goodsAvailable = JSON.parse(JSON.stringify(this.homeGoods));
             for (const goodNumber in goodsAvailable) {
@@ -242,12 +267,14 @@ class Ship {
                 goodsAvailable[goodNumber].price = portPrices[goodName];
                 goodsAvailable[goodNumber].profit = portPrices[goodName] / goodsAvailable[goodNumber].volume;
             }
+
             const itemsForBuy = Object.keys(goodsAvailable);
             itemsForBuy.sort((a, b) => {
                 return goodsAvailable[b].profit - goodsAvailable[a].profit
             })
             const port = this.ports.find((port) => port.portId === portPrices.portId);
             const possibleExpeditions = [];
+
             for (let j = 0; j < itemsForBuy.length; j += 1) {
                 // Вариант в котором мы меняем главный продукт для покупки
                 let newItemsForBuy = [...itemsForBuy];
@@ -263,6 +290,7 @@ class Ship {
                     profit: 0,
                 };
                 expedition.distance = expedition.road.length * 2;
+
                 for (let i = 0; i < newItemsForBuy.length; i += 1) {
                     if (expedition.total === this.maxCap) {
                         break;
@@ -316,10 +344,12 @@ class Ship {
                     // Вышли за рамки карты
                     return;
                 }
+
                 if (this.map[newCoord[0]][newCoord[1]] === '#' || pathMap[newCoord[0]][newCoord[1]]) {
                     // Скала или клетка уже просканированна
                     return;
                 }
+
                 pathMap[newCoord[0]][newCoord[1]] = {
                     prev: currentCoord
                 }
@@ -339,14 +369,15 @@ class Ship {
     // Создаем координаты для портов в удобном формате и делаем маршрут до порта и обратно
     createExtraInfoForPorts() {
         this.ports.forEach((port) => {
+            // Координаты в удобном формате
             port.coords = [port.y, port.x];
+            // Копируем цены
             port.prices = this.prices.find((price) => price.portId === port.portId);
-        });
-        this.ports.forEach((port) => {
+            // Путь
             port.backRoad = this.createPath(port.coords);
             // Переворачиваем путь
             port.road = [...port.backRoad].reverse().map((direction) => this.reversedDirection[direction]);
-        })
+        });
     }
 
     // Сделать ход
@@ -356,28 +387,11 @@ class Ship {
             this.turn += 1;
             let actionToDo = this.actions.splice(0, 1)[0];
             if (['W','E','N','S'].includes(actionToDo) && this.pirates) {
-                const nextPosition = [this.currentPos[0] + this.reversedMapMoves[actionToDo][0],
-                    this.currentPos[1] + this.reversedMapMoves[actionToDo][1]];
-                if (!this.positionSafeFromPirates(nextPosition)) {
-                    if (!this.positionSafeFromPirates(this.currentPos)) {
-                        let possibleMoves = this.arrayOfMoves.map(i => [i[0] + this.currentPos[0], i[1] + this.currentPos[1]])
-                            .filter(this.isValidPos.bind(this))
-                            .filter(this.positionSafeFromPirates.bind(this))
-                            .filter(this.isPositionAvailableForMove.bind(this))
-                        this.actions.splice(0, 0, actionToDo);
-                        // Тупо или гениально вот в чем вопрос
-                        const newPos = possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
-                        const commandMove = this.mapMoves[[newPos[0] - this.currentPos[0], newPos[1] - this.currentPos[1]].join()]
-                        actionToDo = commandMove;
-                        this.actions.splice(0, 0, this.reversedDirection[commandMove]);
-                    } else {
-                        this.actions.splice(0, 0, actionToDo);
-                        actionToDo = 'WAIT';
-                    }  
-                }
+                actionToDo = this.changeActionFromPirates(actionToDo);
             }
             return actionToDo;
-        } 
+        }
+
         // Иначе создать новое действие
         if (this.isSamePos(this.currentPos, this.homePos)) {
             if (this.maxTurn - this.turn < this.stopGreedy) {
@@ -388,7 +402,34 @@ class Ship {
         } else {
             this.goHome(this.currentPos);
         }
+
         return this.doAction();
+    }
+
+    // Меняем действие если мы в опасности
+    changeActionFromPirates(actionToDo) {
+        const nextPosition = [this.currentPos[0] + this.reversedMapMoves[actionToDo][0],
+            this.currentPos[1] + this.reversedMapMoves[actionToDo][1]];
+
+        if (!this.positionSafeFromPirates(nextPosition)) {
+            if (!this.positionSafeFromPirates(this.currentPos)) {
+                let possibleMoves = this.arrayOfMoves.map(i => [i[0] + this.currentPos[0], i[1] + this.currentPos[1]])
+                    .filter(this.isValidPos.bind(this))
+                    .filter(this.positionSafeFromPirates.bind(this))
+                    .filter(this.isPositionAvailableForMove.bind(this))
+
+                this.actions.splice(0, 0, actionToDo);
+                // Двигаться в случайном направлении?
+                const newPos = possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
+                const commandMove = this.mapMoves[[newPos[0] - this.currentPos[0], newPos[1] - this.currentPos[1]].join()]
+                actionToDo = commandMove;
+                this.actions.splice(0, 0, this.reversedDirection[commandMove]);
+            } else {
+                this.actions.splice(0, 0, actionToDo);
+                return 'WAIT';
+            }  
+        }
+        return actionToDo;
     }
 
     // Создать маршрут до домашнего порта
@@ -396,12 +437,16 @@ class Ship {
         let currentPosition = this.pathMap[fromCooridantes[0]][fromCooridantes[1]];
         let positionCoordinates = fromCooridantes;
         const road = [];
+
         while (currentPosition.prev) {
-            const move = [currentPosition.prev[0] - positionCoordinates[0], currentPosition.prev[1] - positionCoordinates[1]];
+            const move = [currentPosition.prev[0] - positionCoordinates[0], 
+                currentPosition.prev[1] - positionCoordinates[1]];
+
             road.push(this.mapMoves[move.join()]);
             positionCoordinates = [currentPosition.prev[0], currentPosition.prev[1]];
             currentPosition = this.pathMap[currentPosition.prev[0]][currentPosition.prev[1]];
         }
+
         return road;
     }
 
