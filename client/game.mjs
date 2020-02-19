@@ -5,6 +5,7 @@ export function startGame(levelMap, gameState) {
     ship = new Ship([gameState.ship.y, gameState.ship.x], [home.y, home.x], 
         gameState.ports.filter((port) => !port.isHome), gameState.prices,
         gameState.goodsInPort, levelMap);
+    //console.log(gameState.prices);
     //console.log(ship);
 }
 
@@ -12,7 +13,7 @@ export function getNextCommand(gameState) {
     ship.homeGoods = gameState.goodsInPort;
     ship.currentPos = [gameState.ship.y, gameState.ship.x];
     ship.score = gameState.score;
-    if (ship.logger && ship.turn === 178) {
+    if (/*ship.logger &&*/ ship.turn === 178) {
         console.log(ship.score);
     }
     if (gameState.pirates.length) {
@@ -25,7 +26,11 @@ export function getNextCommand(gameState) {
         // Корабль(Ship)
         ship.map[gameState.ship.y][gameState.ship.x] = 'S';
     }
-    return ship.doAction();
+    //console.log(ship.map.map(i => i.join('')).join('\n'));
+    const a = ship.doAction();
+    // console.log(ship.score);
+    // console.log(a);
+    return a;
 }
 
 
@@ -45,13 +50,13 @@ class Ship {
         // Обьем трюма
         this.maxCap = 368;
         // Максимальное количество ходов
-        this.maxTurn = 180;
+        this.maxTurn = 179;
         // Номер текущего хода
         this.turn = 0;
         // Массив Действий
         this.actions = [];
         // Логгирование для статиситики
-        this.logger = true;
+        this.logger = false;
         // Экспедиции
         this.expeditions = [];
         // Команды
@@ -92,8 +97,136 @@ class Ship {
         this.generatePathsMap();
         // Координаты для портов и путь из порта в домашний порт
         this.createExtraInfoForPorts();
+        this.minRoadToPort = this.ports.reduce((acc, port) => {
+            return Math.min(acc, port.road.length)
+        }, 1000);
+        // 5 дорог + 3 раза по одному предмету купить и продать
+        this.stopGreedy = this.minRoadToPort * 5 + 6;
         // Отсортировать экспедиции
         this.sortExpeditions();
+    }
+
+    createTwoBestExpeditions() {
+        const variants = [];
+        this.ports.forEach((firstPort) => {
+            this.ports.forEach((secondPort) => {
+                const variant = {
+                    items: {},
+                    prices: [],
+                    total: 0,
+                    id: variants.length,
+                };
+                this.homeGoods.forEach((good) => {
+                    variant.items[good.name] = {
+                        amount: good.amount,
+                        volume: good.volume,
+                    }
+                })
+                variant.ports = [JSON.parse(JSON.stringify(firstPort)), JSON.parse(JSON.stringify(secondPort))];
+                variant.ports.forEach((port) => {
+                    port.itemsForTravel = [];
+                    port.leftSpaces = ship.maxCap;
+                });
+                variant.ports.sort((a, b) => a.road.length - b.road.length);
+                // 2 дороги + дорога во второе место + 2 пачки предметов
+                Object.defineProperty(variant, 'stepsLeft', {
+                    get: function() {
+                        return ship.maxTurn - (this.ports[0].road.length * 2 + this.ports[1].road.length +
+                            this.ports[0].itemsForTravel.length * 2 + this.ports[1].itemsForTravel.length * 2 +
+                                ship.turn);
+                    }
+                });
+                variant.ports.forEach((port, index) => {
+                    for (const nameOfGood in port.prices) {
+                        if (variant.items[nameOfGood]) {
+                            const itemData = {
+                                portIndex: index,
+                                name: nameOfGood,
+                                price: port.prices[nameOfGood] || 0,
+                            };
+                            itemData.volume = variant.items[itemData.name].volume;
+                            itemData.pricePerSpace = itemData.price / itemData.volume;
+                            Object.defineProperties(itemData, {
+                                'leftSpaces': {
+                                    get: function() {
+                                        return port.leftSpaces;
+                                    }
+                                },
+                                'maxAmountOfItems': {
+                                    get: function() {
+                                        return Math.min(Math.floor(this.leftSpaces / this.volume), variant.items[nameOfGood].amount);
+                                    }
+                                },
+                                'moneyProfit': {
+                                    get: function() {
+                                        return this.maxAmountOfItems * this.price
+                                    }
+                                }
+                            })
+                            variant.prices.push(itemData)
+                        }
+                    }
+                });
+                while (variant.stepsLeft > 1) {
+                    variant.prices = variant.prices.filter((singlePrice) => singlePrice.maxAmountOfItems > 0);
+                    if (variant.prices.length === 0) {
+                        break;
+                    }
+                    if (variant.stepsLeft > 4) {
+                        // Берем самые профитные предметы по соотношению на еденицу места
+                        variant.prices.sort((a, b) => {
+                            return b.pricePerSpace - a.pricePerSpace;
+                        });
+                        if (variant.prices[0].maxAmountOfItems) {
+                            const item = variant.prices[0];
+                            variant.ports[item.portIndex].itemsForTravel.push({
+                                name: item.name,
+                                amount: item.maxAmountOfItems,
+                            });
+                            variant.total += item.moneyProfit;
+                            variant.ports[item.portIndex].leftSpaces -= item.maxAmountOfItems * item.volume;
+                            variant.items[item.name].amount -= item.maxAmountOfItems;
+                        }
+                    } else {
+                        // Берем предметы, которые принесут максимальное количество денег
+                        variant.prices.sort((a, b) => {
+                            return b.moneyProfit - a.moneyProfit;
+                        });
+                        const item = variant.prices[0];
+                        variant.ports[item.portIndex].itemsForTravel.push({
+                            name: item.name,
+                            amount: item.maxAmountOfItems,
+                        });
+                        variant.total += item.moneyProfit;
+                        variant.ports[item.portIndex].leftSpaces -= item.maxAmountOfItems * item.volume;
+                        variant.items[item.name].amount -= item.maxAmountOfItems;
+                    }
+                }
+                variants.push(variant);
+            })
+        });
+        console.log(variants);
+        const bestVariant = variants.reduce((acc, curVal) => {
+            if (curVal.total > acc.total) {
+                acc = curVal;
+            } else if (curVal.total === acc.total) {
+                if (curVal.stepsLeft > acc.stepsLeft) { 
+                    acc = curVal;
+                }
+            }
+            return acc;
+        }, variants[0]);
+        console.log(bestVariant);
+        this.loadItems(bestVariant.ports[0].itemsForTravel);
+        this.move(bestVariant.ports[0].road);
+        this.sellItems(bestVariant.ports[0].itemsForTravel);
+        this.move(bestVariant.ports[0].backRoad);
+        this.loadItems(bestVariant.ports[1].itemsForTravel);
+        this.move(bestVariant.ports[1].road);
+        this.sellItems(bestVariant.ports[1].itemsForTravel);
+        for (let i = 0; i < 10; i += 1) {
+            this.actions.push(this.commands['WAIT']());
+        }
     }
 
     constructExpeditionsForEveryPort() {
@@ -207,6 +340,7 @@ class Ship {
     createExtraInfoForPorts() {
         this.ports.forEach((port) => {
             port.coords = [port.y, port.x];
+            port.prices = this.prices.find((price) => price.portId === port.portId);
         });
         this.ports.forEach((port) => {
             port.backRoad = this.createPath(port.coords);
@@ -246,7 +380,11 @@ class Ship {
         } 
         // Иначе создать новое действие
         if (this.isSamePos(this.currentPos, this.homePos)) {
-            this.makeExpedition();
+            if (this.maxTurn - this.turn < this.stopGreedy) {
+                this.createTwoBestExpeditions();
+            } else {
+                this.makeExpedition();
+            }
         } else {
             this.goHome(this.currentPos);
         }
