@@ -45,6 +45,7 @@ export default async function startGameLoop(map, state, piratesPoints = []) {
 
             runCommand(command, game);
             movePirates(game);
+            console.log(command, game.score);
             commandForRender = createCommandForRenderHistory(command, game)
         } catch (err) {
             game.score = 0;
