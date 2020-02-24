@@ -105,6 +105,7 @@ class Ship {
         }, 1000);
         // 5 дорог + 3 раза по одному предмету купить и продать
         this.stopGreedy = this.minRoadToPort * 5 + 6;
+        this.constructExpeditionsForEveryPort();
         // Отсортировать экспедиции
         this.sortExpeditions();
     }
@@ -330,11 +331,9 @@ class Ship {
         this.pathMap[this.homePos[0]][this.homePos[1]] = {
             prev: null
         };
-        (function generatePaths(pathMap, stack) {
-            if (stack.length === 0) {
-                return
-            }
-            const currentCoord = stack.splice(0, 1)[0];
+        const stack = [this.homePos];
+        while (stack.length) {
+            const currentCoord = stack.shift();
             this.arrayOfMoves.forEach((move) => {
                 const newCoord = [currentCoord[0] + move[0], currentCoord[1] + move[1]];
                 if (!(this.isValidPos(newCoord))) {
@@ -342,18 +341,17 @@ class Ship {
                     return;
                 }
 
-                if (this.map[newCoord[0]][newCoord[1]] === '#' || pathMap[newCoord[0]][newCoord[1]]) {
+                if (this.map[newCoord[0]][newCoord[1]] === '#' || this.pathMap[newCoord[0]][newCoord[1]]) {
                     // Скала или клетка уже просканированна
                     return;
                 }
 
-                pathMap[newCoord[0]][newCoord[1]] = {
+                this.pathMap[newCoord[0]][newCoord[1]] = {
                     prev: currentCoord
                 }
                 stack.push(newCoord);
             })
-            generatePaths.apply(this, [pathMap, stack]);
-        }).apply(this, [this.pathMap, [this.homePos]]);
+        }
     }
 
     // Сортируем экспедиции по профиту
@@ -393,7 +391,8 @@ class Ship {
         if (this.isSamePos(this.currentPos, this.homePos)) {
             // Если будет больше не пройдет по времени
             const maxAmountOfPorts = 6;
-            if (this.maxTurn - this.turn < this.stopGreedy && this.ports.length < maxAmountOfPorts) {
+            if (this.maxTurn - this.turn < this.stopGreedy &&
+                ((this.ports.length < maxAmountOfPorts) || (this.ports.length > 7 && !this.pirates))) {
                 this.createTwoBestExpeditions();
             } else {
                 this.makeExpedition();
